@@ -3,21 +3,14 @@ package com.androidkt.tfaudio;
 
 import android.util.Log;
 import android.util.Pair;
-
-import org.tensorflow.Tensor;
-
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Deque;
 import java.util.List;
 
-/**
- * Reads in results from an instantaneous audio recognition model and smoothes them over time.
- */
+/** Reads in results from an instantaneous audio recognition model and smoothes them over time. */
 public class RecognizeCommands {
-    private static final String SILENCE_LABEL = "_silence_";
-    private static final long MINIMUM_TIME_FRACTION = 4;
     // Configuration settings.
     private List<String> labels = new ArrayList<String>();
     private long averageWindowDurationMs;
@@ -25,13 +18,16 @@ public class RecognizeCommands {
     private int suppressionMs;
     private int minimumCount;
     private long minimumTimeBetweenSamplesMs;
+
     // Working variables.
     private Deque<Pair<Long, float[]>> previousResults = new ArrayDeque<Pair<Long, float[]>>();
     private String previousTopLabel;
     private int labelsCount;
     private long previousTopLabelTime;
     private float previousTopLabelScore;
-    private String TAG = "RecognizeCommands";
+
+    private static final String SILENCE_LABEL = "_silence_";
+    private static final long MINIMUM_TIME_FRACTION = 4;
 
     public RecognizeCommands(
             List<String> inLabels,
@@ -50,6 +46,40 @@ public class RecognizeCommands {
         previousTopLabelTime = Long.MIN_VALUE;
         previousTopLabelScore = 0.0f;
         minimumTimeBetweenSamplesMs = inMinimumTimeBetweenSamplesMS;
+    }
+
+    /** Holds information about what's been recognized. */
+    public static class RecognitionResult {
+        public final String foundCommand;
+        public final float score;
+        public final boolean isNewCommand;
+
+        public RecognitionResult(String inFoundCommand, float inScore, boolean inIsNewCommand) {
+            foundCommand = inFoundCommand;
+            score = inScore;
+            isNewCommand = inIsNewCommand;
+        }
+    }
+
+    private static class ScoreForSorting implements Comparable<ScoreForSorting> {
+        public final float score;
+        public final int index;
+
+        public ScoreForSorting(float inScore, int inIndex) {
+            score = inScore;
+            index = inIndex;
+        }
+
+        @Override
+        public int compareTo(ScoreForSorting other) {
+            if (this.score > other.score) {
+                return -1;
+            } else if (this.score < other.score) {
+                return 1;
+            } else {
+                return 0;
+            }
+        }
     }
 
     public RecognitionResult processLatestResults(float[] currentResults, long currentTimeMS) {
@@ -80,13 +110,13 @@ public class RecognizeCommands {
 
         // Add the latest results to the head of the queue.
         previousResults.addLast(new Pair<Long, float[]>(currentTimeMS, currentResults));
-        Log.d(TAG, currentResults + " " + currentTimeMS);
 
         // Prune any earlier results that are too old for the averaging window.
         final long timeLimit = currentTimeMS - averageWindowDurationMs;
         while (previousResults.getFirst().first < timeLimit) {
             previousResults.removeFirst();
         }
+
         // If there are too few results, assume the result will be unreliable and
         // bail.
         final long earliestTime = previousResults.getFirst().first;
@@ -137,41 +167,5 @@ public class RecognizeCommands {
             isNewCommand = false;
         }
         return new RecognitionResult(currentTopLabel, currentTopScore, isNewCommand);
-    }
-
-    /**
-     * Holds information about what's been recognized.
-     */
-    public static class RecognitionResult {
-        public final String foundCommand;
-        public final float score;
-        public final boolean isNewCommand;
-
-        public RecognitionResult(String inFoundCommand, float inScore, boolean inIsNewCommand) {
-            foundCommand = inFoundCommand;
-            score = inScore;
-            isNewCommand = inIsNewCommand;
-        }
-    }
-
-    private static class ScoreForSorting implements Comparable<ScoreForSorting> {
-        public final float score;
-        public final int index;
-
-        public ScoreForSorting(float inScore, int inIndex) {
-            score = inScore;
-            index = inIndex;
-        }
-
-        @Override
-        public int compareTo(ScoreForSorting other) {
-            if (this.score > other.score) {
-                return -1;
-            } else if (this.score < other.score) {
-                return 1;
-            } else {
-                return 0;
-            }
-        }
     }
 }
